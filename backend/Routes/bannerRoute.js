@@ -1,16 +1,21 @@
-// routes/bannerRoutes.js
-import express from 'express';
-import { createBanner, getAllBanners, deleteBanner } from '../controllers/bannerController.js';
+import express from "express";
+import {
+  createBanner,
+  getAllBanners,
+  deleteBanner,
+} from "../Controllers/bannerController.js";
+import { isAuthenticated, isAdmin } from "../middleware/authUser.js";
 
 const router = express.Router();
 
-// Route for creating a banner
-router.post('/create', createBanner);
+// ==========================================
+// BANNER ROUTES
+// ==========================================
+// Public: View all promotional banners
+router.get("/all", getAllBanners);
 
-// Route for getting all banners
-router.get('/all', getAllBanners);
-
-// Route for deleting a banner
-router.delete('/delete/:id', deleteBanner);
+// Admin: Create and delete promotional banners
+router.post("/create", isAuthenticated, isAdmin("admin"), createBanner);
+router.delete("/delete/:id", isAuthenticated, isAdmin("admin"), deleteBanner);
 
 export default router;

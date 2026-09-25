@@ -1,151 +1,214 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthProvider";
-import axios from 'axios';
+import axios from "axios";
+import { API_BASE_URL } from "../api/apiClient";
 
+// ==========================================
+// USER PROFILE UPDATE COMPONENT
+// ==========================================
 const UpdateProfile = () => {
-  const { profile } = useAuth(); // Assuming profile is fetched using context
-  const { id } = useParams(); // Get user ID from URL
+  const { profile, setProfile } = useAuth();
+  const { userId, id } = useParams();
+  const targetId = userId || id || profile?._id || profile?.id;
   const navigate = useNavigate();
 
-  // State to store user data
   const [userData, setUserData] = useState({
     name: "",
     email: "",
     phone: "",
-    photo: "", // Initial empty string, will hold current photo URL
+    photo: "",
     file: null,
   });
+  const [loading, setLoading] = useState(false);
 
-  // Effect to pre-fill the form with existing user data
+  // Pre-fill form fields from context profile
   useEffect(() => {
     if (profile) {
-      // Pre-fill form fields with current profile data
       setUserData({
-        name: profile.name,
-        email: profile.email,
-        phone: profile.phone,
-        photo: profile.photo, // Assuming the photo is already in the profile
+        name: profile.name || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+        photo: profile.photo?.url || profile.photo || "",
         file: null,
       });
     }
   }, [profile]);
 
-  // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setUserData({
-      ...userData,
+    setUserData((prev) => ({
+      ...prev,
       [name]: value,
-    });
+    }));
   };
 
-  // Handle file input change (for profile photo)
   const handleFileChange = (e) => {
-    setUserData({
-      ...userData,
-      photo: URL.createObjectURL(e.target.files[0]),
-      file: e.target.files[0],
-    });
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      setUserData((prev) => ({
+        ...prev,
+        photo: URL.createObjectURL(selectedFile),
+        file: selectedFile,
+      }));
+    }
   };
 
-  // Handle form submission for updating user
   const handleSubmit = async (e) => {
     e.preventDefault();
-  
-    // Create FormData to handle file uploads
-    const formData = new FormData();
-    formData.append('name', userData.name);
-    formData.append('email', userData.email);
-    formData.append('phone', userData.phone);
-    if (userData.file) {
-      formData.append('photo', userData.file);
+
+    if (!targetId) {
+      toast.error("User identification missing. Please log in again.");
+      return;
     }
-  
+
+    const formData = new FormData();
+    formData.append("name", userData.name);
+    formData.append("email", userData.email);
+    formData.append("phone", userData.phone);
+    if (userData.file) {
+      formData.append("photo", userData.file);
+    }
+
     try {
-      console.log("Submitting form with ID:", id); // Add log to check the ID value
-  
-      const response = await axios.put(`http://localhost:3900/api/users/user/${id}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-  
-      toast.success("User Profile Updated Successfully");
+      setLoading(true);
+      const response = await axios.put(
+        `${API_BASE_URL}/users/user/${targetId}`,
+        formData,
+        {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      if (response.data?.user) {
+        setProfile(response.data.user);
+      }
+
+      toast.success("Profile updated successfully!");
       navigate("/profile");
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast.error("Failed to update profile");
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        "Failed to update profile";
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex justify-center items-center bg-gray-100 py-6 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-lg w-full bg-white p-8 rounded-lg shadow-lg">
-        <h2 className="text-3xl font-semibold text-center text-gray-800 mb-6">Update User Profile</h2>
+    <div className="min-h-screen flex justify-center items-center bg-slate-50/70 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-lg w-full bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-200/80 space-y-6">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <Link
+            to="/profile"
+            className="text-xs font-bold text-slate-500 hover:text-slate-900 flex items-center gap-1.5 transition"
+          >
+            ← Return to Profile
+          </Link>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+            Velura Portal
+          </span>
+        </div>
+
+        <div className="text-center">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Update Profile
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Update your verified client credentials and display portrait
+          </p>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Profile Photo Preview & Upload */}
+          <div className="flex flex-col items-center space-y-3">
+            <div className="w-24 h-24 rounded-full overflow-hidden shadow-md ring-4 ring-indigo-100">
+              <img
+                src={userData.photo || "/default-avatar.png"}
+                alt="Profile Preview"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.target.src = "https://via.placeholder.com/150";
+                }}
+              />
+            </div>
+            <label className="cursor-pointer bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-sm font-semibold hover:bg-indigo-100 transition">
+              Choose Photo
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {/* Name Field */}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+            <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-1">
+              Full Name
+            </label>
             <input
+              type="text"
               id="name"
               name="name"
-              type="text"
               value={userData.name}
               onChange={handleChange}
               required
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
+              placeholder="Your full name"
             />
           </div>
+
+          {/* Email Field */}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+            <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-1">
+              Email Address
+            </label>
             <input
+              type="email"
               id="email"
               name="email"
-              type="email"
               value={userData.email}
               onChange={handleChange}
               required
-              disabled
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-gray-100 cursor-not-allowed"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
+              placeholder="you@example.com"
             />
           </div>
+
+          {/* Phone Field */}
           <div>
-            <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone</label>
+            <label htmlFor="phone" className="block text-sm font-semibold text-gray-700 mb-1">
+              Phone Number
+            </label>
             <input
+              type="tel"
               id="phone"
               name="phone"
-              type="text"
               value={userData.phone}
               onChange={handleChange}
               required
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
+              placeholder="10-digit phone number"
             />
           </div>
-          <div>
-            <label htmlFor="photo" className="block text-sm font-medium text-gray-700">Profile Photo</label>
-            <input
-              id="photo"
-              name="photo"
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="mt-1 block w-full text-sm text-gray-700 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200"
-            />
-            {userData.photo && (
-              <div className="mt-4">
-                <img src={userData.photo.url} alt="Profile" className="w-20 h-20 rounded-full object-cover" />
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 hover:bg-indigo-700"
-            >
-              Update Profile
-            </button>
-          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition duration-200 disabled:opacity-50"
+          >
+            {loading ? "Saving Changes..." : "Save Changes"}
+          </button>
         </form>
       </div>
     </div>

@@ -1,26 +1,35 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-// Define the Banner schema
+// ==========================================
+// BANNER SCHEMA DEFINITION
+// ==========================================
 const bannerSchema = new mongoose.Schema(
   {
     bannerImage: {
       public_id: {
         type: String,
-        required: [true, "Image public ID is required"],
+        required: [true, "Banner image public ID is required"],
       },
       url: {
         type: String,
-        required: [true, "Image URL is required"],
+        required: [true, "Banner image URL is required"],
       },
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
+    title: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    link: {
+      type: String,
+      trim: true,
+      default: "",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-// Create and export the Banner model
-const Banner = mongoose.model('Banner', bannerSchema);
+export const Banner = mongoose.model("Banner", bannerSchema);
 export default Banner;

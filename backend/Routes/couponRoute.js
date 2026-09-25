@@ -1,19 +1,35 @@
 import express from "express";
-import{ getCoupon, validateCoupon, createCoupon, deleteCoupon } from "../Controllers/couponController.js";
-
+import {
+  getCoupon,
+  getAvailableCoupons,
+  validateCoupon,
+  createCoupon,
+  deleteCoupon,
+} from "../Controllers/couponController.js";
+import { isAuthenticated, isAdmin } from "../middleware/authUser.js";
 
 const router = express.Router();
 
-// Get active coupon for the logged-in user
+// ==========================================
+// PUBLIC / USER COUPON ROUTES
+// ==========================================
+// Get currently active coupon
 router.get("/", getCoupon);
 
-// Validate a coupon code
-router.post("/validate",validateCoupon);
+// Get all available coupons with search support
+router.get("/available", getAvailableCoupons);
+router.get("/all", getAvailableCoupons);
 
-// Create a new coupon
-router.post("/create", createCoupon);
+// Validate entered coupon code
+router.post("/validate", validateCoupon);
 
-// Delete a coupon by code
-router.delete("/delete", deleteCoupon);
+// ==========================================
+// ADMIN COUPON MANAGEMENT ROUTES
+// ==========================================
+// Create a new promotional coupon
+router.post("/create", isAuthenticated, isAdmin("admin"), createCoupon);
+
+// Delete a coupon
+router.delete("/delete", isAuthenticated, isAdmin("admin"), deleteCoupon);
 
 export default router;

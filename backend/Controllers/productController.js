@@ -1,26 +1,29 @@
 import mongoose from "mongoose";
 import { Product } from "../Models/productModel.js";
 import { v2 as cloudinary } from "cloudinary";
-import ApiFeatures from "../utils/apifeatures.js"
+import ApiFeatures from "../utils/apifeatures.js";
 
+// ==========================================
+// 1. CREATE PRODUCT (ADMIN)
+// ==========================================
+/**
+ * Create a new product with image upload to Cloudinary
+ */
 export const createProduct = async (req, res) => {
   try {
-    // Check if an image file is provided
     if (!req.files || Object.keys(req.files).length === 0) {
       return res.status(400).json({ message: "Product image is required" });
     }
 
     const { productImage } = req.files;
 
-    // Validate image format
     const allowedFormats = ["image/jpeg", "image/png", "image/webp"];
     if (!allowedFormats.includes(productImage.mimetype)) {
       return res.status(400).json({
-        message: "Invalid photo format. Only jpg, png, and webp are allowed",
+        message: "Invalid photo format. Only JPG, PNG, and WEBP are allowed",
       });
     }
 
-    // Extract product details from the request body
     const { title, category, description, price, stock } = req.body;
 
     if (!title || !category || !description || !price || !stock) {
@@ -29,12 +32,10 @@ export const createProduct = async (req, res) => {
       });
     }
 
-    // Fetch admin details from the authenticated user
     const adminName = req?.user?.name || "Admin";
     const adminPhoto = req?.user?.photo?.url || "defaultAdminPhoto.jpg";
     const createdBy = req?.user?._id;
 
-    // Upload image to Cloudinary
     const cloudinaryResponse = await cloudinary.uploader.upload(
       productImage.tempFilePath,
       {
@@ -43,68 +44,81 @@ export const createProduct = async (req, res) => {
     );
 
     if (!cloudinaryResponse || cloudinaryResponse.error) {
-      console.log(cloudinaryResponse.error);
-      return res.status(500).json({ message: "Error uploading image" });
+      console.error("Cloudinary product upload error:", cloudinaryResponse?.error);
+      return res.status(500).json({ message: "Error uploading image to Cloudinary" });
     }
 
-    // Prepare product data
     const productData = {
       title,
       category,
       description,
-      price,
-      stock,
+      price: Number(price),
+      stock: Number(stock),
       adminName,
       adminPhoto,
       createdBy,
       productImage: {
         public_id: cloudinaryResponse.public_id,
-        url: cloudinaryResponse.url,
+        url: cloudinaryResponse.secure_url || cloudinaryResponse.url,
       },
     };
 
-    // Save product to the database
     const product = await Product.create(productData);
 
-    // Respond with success message
     res.status(201).json({
       message: "Product created successfully",
       product,
     });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("Error creating product:", error);
+    return res.status(500).json({ error: "Internal server error", message: error.message });
   }
 };
 
-// Delete Product
+// ==========================================
+// 2. DELETE PRODUCT (ADMIN)
+// ==========================================
+/**
+ * Delete a product and its associated Cloudinary image
+ */
 export const deleteProduct = async (req, res) => {
   const { id } = req.params;
 
-  const product = await Product.findById(id);
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
-  }
+  try {
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-  await product.deleteOne();
-  res.status(200).json({ message: "Product deleted successfully" });
+    if (product.productImage?.public_id) {
+      await cloudinary.uploader.destroy(product.productImage.public_id);
+    }
+
+    await product.deleteOne();
+    res.status(200).json({ message: "Product deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    res.status(500).json({ message: "Error deleting product", error: error.message });
+  }
 };
 
-// Get All Products
+// ==========================================
+// 3. GET ALL PRODUCTS (WITH SEARCH & PAGINATION)
+// ==========================================
+/**
+ * Retrieve all products with search, category filtering, and pagination
+ */
 export const getAllProducts = async (req, res) => {
   try {
-    const resultPerPage = 80;
+    const resultPerPage = Number(req.query.limit) || 300;
     const productCount = await Product.countDocuments();
 
-    // Apply search and filter separately
+    // Query with search and filters applied
     const apifeature = new ApiFeatures(Product.find(), req.query).search().filter();
-    const filteredProductsQuery = apifeature.query;
-
-    // Execute search and filter query to get the count
-    const filteredProducts = await filteredProductsQuery;
+    const filteredProducts = await apifeature.query;
     const filteredProductCount = filteredProducts.length;
 
-    // Apply pagination on a new query
+    // Apply pagination on separate query
     const paginatedApifeature = new ApiFeatures(Product.find(), req.query)
       .search()
       .filter()
@@ -120,6 +134,7 @@ export const getAllProducts = async (req, res) => {
       filteredProductCount,
     });
   } catch (error) {
+    console.error("Error fetching all products:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch products",
@@ -128,7 +143,12 @@ export const getAllProducts = async (req, res) => {
   }
 };
 
-// Get Single Product
+// ==========================================
+// 4. GET SINGLE PRODUCT DETAILS
+// ==========================================
+/**
+ * Fetch a single product by ID
+ */
 export const getSingleProduct = async (req, res) => {
   const { id } = req.params;
 
@@ -136,17 +156,24 @@ export const getSingleProduct = async (req, res) => {
     return res.status(400).json({ message: "Invalid Product ID" });
   }
 
-  const product = await Product.findById(id);
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
-  }
+  try {
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-  res.status(200).json(product);
+    res.status(200).json(product);
+  } catch (error) {
+    res.status(500).json({ message: "Error retrieving product", error: error.message });
+  }
 };
 
-
-// get product by id then category
-// Get Product by Category
+// ==========================================
+// 5. GET PRODUCTS BY CATEGORY & RELATED PRODUCTS
+// ==========================================
+/**
+ * Fetch product by ID and related products in same category
+ */
 export const getProductsByCategory = async (req, res) => {
   const { id } = req.params;
 
@@ -154,33 +181,54 @@ export const getProductsByCategory = async (req, res) => {
     return res.status(400).json({ message: "Invalid Product ID" });
   }
 
-  // Find the product by its ID
-  const product = await Product.findById(id);
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
+  try {
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const relatedProducts = await Product.find({
+      category: product.category,
+      _id: { $ne: id },
+    }).limit(8);
+
+    res.status(200).json({
+      product,
+      relatedProducts,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching category products", error: error.message });
   }
-
-  // Find other products in the same category
-  const productsInSameCategory = await Product.find({ 
-    category: product.category, 
-    _id: { $ne: id } // Exclude the current product
-  });
-
-  res.status(200).json({
-    product,
-    relatedProducts: productsInSameCategory,
-  });
 };
 
-// Get My Products
+// ==========================================
+// 6. GET ADMIN'S PRODUCTS
+// ==========================================
+/**
+ * Retrieve products created by the authenticated admin
+ */
 export const getMyProducts = async (req, res) => {
-  const createdBy = req.user._id;
+  try {
+    const createdBy = req.user._id;
+    let myProducts = await Product.find({ createdBy }).sort({ createdAt: -1 });
 
-  const myProducts = await Product.find({ createdBy });
-  res.status(200).json(myProducts);
+    // If no products explicitly match createdBy and user is an admin, return all catalog products
+    if (myProducts.length === 0 && (req.user.role === "admin" || !req.user.role)) {
+      myProducts = await Product.find().sort({ createdAt: -1 });
+    }
+
+    res.status(200).json(myProducts);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching admin products", error: error.message });
+  }
 };
 
-// Update Product
+// ==========================================
+// 7. UPDATE PRODUCT (ADMIN)
+// ==========================================
+/**
+ * Update product details and optionally replace image
+ */
 export const updateProduct = async (req, res) => {
   const { id } = req.params;
 
@@ -189,26 +237,21 @@ export const updateProduct = async (req, res) => {
   }
 
   try {
-    // Find the product by ID
     const product = await Product.findById(id);
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // Update specified fields if provided in req.body
     const { title, price, stock, category, description } = req.body;
 
     if (title) product.title = title;
-    if (price) product.price = price;
-    if (stock) product.stock = stock;
+    if (price !== undefined) product.price = Number(price);
+    if (stock !== undefined) product.stock = Number(stock);
     if (category) product.category = category;
     if (description) product.description = description;
 
-    // Handle product image update if provided
     if (req.files && req.files.productImage) {
       const { productImage } = req.files;
-
-      // Validate image format
       const allowedFormats = ["image/jpeg", "image/png", "image/webp"];
       if (!allowedFormats.includes(productImage.mimetype)) {
         return res.status(400).json({
@@ -216,29 +259,21 @@ export const updateProduct = async (req, res) => {
         });
       }
 
-      // Upload new image to Cloudinary
-      const cloudinaryResponse = await cloudinary.uploader.upload(
-        productImage.tempFilePath
-      );
-
-      if (!cloudinaryResponse || cloudinaryResponse.error) {
-        console.error(cloudinaryResponse.error);
-        return res.status(500).json({ message: "Failed to upload image" });
-      }
-
-      // Delete old image from Cloudinary if exists
       if (product.productImage?.public_id) {
         await cloudinary.uploader.destroy(product.productImage.public_id);
       }
 
-      // Update product image details
+      const cloudinaryResponse = await cloudinary.uploader.upload(
+        productImage.tempFilePath,
+        { folder: "products" }
+      );
+
       product.productImage = {
         public_id: cloudinaryResponse.public_id,
-        url: cloudinaryResponse.url,
+        url: cloudinaryResponse.secure_url || cloudinaryResponse.url,
       };
     }
 
-    // Save the updated product
     await product.save();
 
     res.status(200).json({
@@ -254,24 +289,30 @@ export const updateProduct = async (req, res) => {
   }
 };
 
-
-
-
-// Create or Update a Product Review
+// ==========================================
+// 8. PRODUCT REVIEWS
+// ==========================================
+/**
+ * Create or update a customer review for a product
+ */
 export const createProductReview = async (req, res) => {
   try {
     const { rating, comment, productId } = req.body;
 
+    if (!rating || !comment || !productId) {
+      return res.status(400).json({ message: "Rating, comment, and productId are required" });
+    }
+
     const review = {
       user: req.user._id,
       name: req.user.name,
-      photo: req.user.photo.url, // Store the user's photo URL in the review
+      photo: req.user.photo?.url || "",
       rating: Number(rating),
       comment,
+      createdAt: new Date(),
     };
 
     const product = await Product.findById(productId);
-
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
@@ -285,7 +326,7 @@ export const createProductReview = async (req, res) => {
         if (rev.user.toString() === req.user._id.toString()) {
           rev.rating = review.rating;
           rev.comment = review.comment;
-          rev.photo = review.photo; // Update the photo URL if it changes
+          rev.photo = review.photo;
         }
       });
     } else {
@@ -293,18 +334,17 @@ export const createProductReview = async (req, res) => {
       product.numOfReviews = product.reviews.length;
     }
 
-    // Calculate average rating
     const totalRating = product.reviews.reduce((acc, rev) => acc + rev.rating, 0);
-    product.ratings = totalRating / product.reviews.length;
+    product.ratings = Number((totalRating / product.reviews.length).toFixed(1));
 
     await product.save({ validateBeforeSave: false });
 
     res.status(200).json({
       success: true,
-      message: "Review added/updated successfully",
+      message: "Review submitted successfully",
       productDetails: {
         id: product._id,
-        name: product.name,
+        title: product.title,
         price: product.price,
         ratings: product.ratings,
         numOfReviews: product.numOfReviews,
@@ -312,34 +352,36 @@ export const createProductReview = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Error submitting review:", error);
     res.status(500).json({ message: error.message });
   }
 };
 
-
+/**
+ * Get all reviews for a product
+ */
 export const getProductReviews = async (req, res) => {
   try {
-    const { id } = req.params; // Extract the product ID from the route parameter
+    const { id } = req.params;
 
-    // Fetch the product and populate the 'user' field in reviews with 'name' and 'photo.url'
     const product = await Product.findById(id).populate({
-      path: 'reviews.user',  // Populate the 'user' field in the review
-      select: 'name photo.url', // Fetch 'name' and 'photo.url' of the user
+      path: "reviews.user",
+      select: "name photo.url",
     });
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // Map over the reviews to include the user's name and photo URL
     const reviewsWithUserDetails = product.reviews.map((review) => {
-      const userName = review.user ? review.user.name : 'Anonymous'; // Fallback if user is null
-      const userProfilePhotoUrl = review.user && review.user.photo ? review.user.photo.url : ''; // Fallback if photo is null
+      const userName = review.user ? review.user.name : review.name || "Anonymous";
+      const userProfilePhotoUrl =
+        review.user && review.user.photo ? review.user.photo.url : review.photo || "";
 
       return {
         ...review.toObject(),
         userName,
-        userProfilePhotoUrl, // Add the user's profile photo URL
+        userProfilePhotoUrl,
       };
     });
 
@@ -352,29 +394,160 @@ export const getProductReviews = async (req, res) => {
   }
 };
 
+// ==========================================
+// 9. SMART SEARCH PRODUCTS WITH SEMANTIC EXPANSION
+// ==========================================
+const CATEGORY_SYNONYMS = {
+  Footwear: [
+    "shoe", "shoes", "sneaker", "sneakers", "boot", "boots", "loafer",
+    "loafers", "sandals", "heels", "footwear", "oxford", "slippers", "derby"
+  ],
+  Men: [
+    "men", "mens", "man", "male", "boy", "blazer", "suit", "t-shirt",
+    "shirt", "trouser", "tuxedo", "jacket"
+  ],
+  Women: [
+    "women", "womens", "woman", "female", "girl", "dress", "saree",
+    "kurti", "gown", "skirt", "top", "blouse"
+  ],
+  Kids: [
+    "kid", "kids", "child", "children", "baby", "toddler", "toys", "infant"
+  ],
+  Beauty: [
+    "beauty", "cosmetic", "cosmetics", "skincare", "skin", "makeup",
+    "serum", "perfume", "fragrance", "lipstick", "cream", "moisturizer",
+    "glow", "lotion", "oil"
+  ],
+  Accessories: [
+    "accessory", "accessories", "watch", "watches", "bag", "bags",
+    "handbag", "purse", "wallet", "sunglasses", "shades", "belt",
+    "jewelry", "jewellery", "bracelet", "ring", "necklace", "tote"
+  ],
+  Home: [
+    "home", "kitchen", "decor", "cushion", "lamp", "vase", "blanket",
+    "curtain", "furniture", "rug", "table", "chair", "bedding", "ceramic"
+  ],
+};
 
-// Controller to handle product search by title and description
+const escapeRegex = (str) => str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+
+/**
+ * Search products by multi-token keywords, category synonyms, and relevance ranking
+ */
 export const searchProducts = async (req, res) => {
-  const keyword = req.query.keyword
-    ? {
-        $or: [
-          { title: { $regex: req.query.keyword, $options: 'i' } },
-          { category: { $regex: req.query.keyword, $options: 'i' } },
-          { description: { $regex: req.query.keyword, $options: 'i' } },
-        ],
-      }
-    : {};
-
   try {
-    const products = await Product.find({ ...keyword });
+    const rawSearch = (req.query.keyword || req.query.query || req.query.q || "").trim();
+
+    if (!rawSearch) {
+      const products = await Product.find().sort({ createdAt: -1 }).limit(30);
+      return res.status(200).json({
+        success: true,
+        keyword: "",
+        count: products.length,
+        products,
+      });
+    }
+
+    const searchTokens = rawSearch
+      .toLowerCase()
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    // Identify any matched categories from synonyms
+    const matchedCategories = new Set();
+    for (const [catName, synonyms] of Object.entries(CATEGORY_SYNONYMS)) {
+      if (rawSearch.toLowerCase().includes(catName.toLowerCase())) {
+        matchedCategories.add(catName);
+      }
+      for (const token of searchTokens) {
+        if (
+          synonyms.some(
+            (s) =>
+              s.toLowerCase() === token ||
+              token.includes(s) ||
+              s.includes(token)
+          )
+        ) {
+          matchedCategories.add(catName);
+        }
+      }
+    }
+
+    // Build compound query:
+    // 1. Direct whole-phrase match
+    // 2. Any token match on title, category, description
+    // 3. Matched categories
+    const conditions = [];
+
+    // Exact phrase
+    const escapedPhrase = escapeRegex(rawSearch);
+    conditions.push({ title: { $regex: escapedPhrase, $options: "i" } });
+    conditions.push({ category: { $regex: escapedPhrase, $options: "i" } });
+    conditions.push({ description: { $regex: escapedPhrase, $options: "i" } });
+
+    // Individual tokens
+    for (const token of searchTokens) {
+      if (token.length >= 2) {
+        const escaped = escapeRegex(token);
+        conditions.push({ title: { $regex: escaped, $options: "i" } });
+        conditions.push({ category: { $regex: escaped, $options: "i" } });
+        conditions.push({ description: { $regex: escaped, $options: "i" } });
+      }
+    }
+
+    // Category synonyms
+    if (matchedCategories.size > 0) {
+      conditions.push({ category: { $in: Array.from(matchedCategories) } });
+    }
+
+    const matchedProducts = await Product.find({ $or: conditions });
+
+    // Relevance scoring
+    const scoredProducts = matchedProducts.map((p) => {
+      let score = 0;
+      const titleLower = (p.title || "").toLowerCase();
+      const descLower = (p.description || "").toLowerCase();
+      const catLower = (p.category || "").toLowerCase();
+      const searchLower = rawSearch.toLowerCase();
+
+      // Exact title match gets huge score
+      if (titleLower === searchLower) score += 100;
+      else if (titleLower.includes(searchLower)) score += 60;
+
+      // Category match
+      if (catLower.includes(searchLower) || matchedCategories.has(p.category)) {
+        score += 40;
+      }
+
+      // Check how many tokens match
+      for (const token of searchTokens) {
+        if (titleLower.includes(token)) score += 20;
+        if (catLower.includes(token)) score += 15;
+        if (descLower.includes(token)) score += 5;
+      }
+
+      return { product: p, score };
+    });
+
+    // Sort by highest score first, then newest
+    scoredProducts.sort((a, b) => b.score - a.score);
+
+    const sortedProducts = scoredProducts.map((sp) => sp.product);
+
     res.status(200).json({
       success: true,
-      products,
+      keyword: rawSearch,
+      count: sortedProducts.length,
+      matchedCategories: Array.from(matchedCategories),
+      products: sortedProducts,
     });
   } catch (error) {
+    console.error("Error in searchProducts:", error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching search results',
+      message: "Error fetching search results",
+      error: error.message,
     });
   }
 };

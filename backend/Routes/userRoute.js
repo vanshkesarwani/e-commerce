@@ -9,24 +9,44 @@ import {
   getSingleUserById,
   updateUser,
   register,
-  updatebyUser
-} from "../Controllers/userConroller.js"; // Correct case and folder path
-import { isAuthenticated } from "../middleware/authUser.js";
+  updatebyUser,
+  forgotPassword,
+  verifyResetToken,
+  resetPassword,
+} from "../Controllers/userConroller.js";
+import { isAuthenticated, isAdmin } from "../middleware/authUser.js";
 
 const router = express.Router();
 
-// Routes
-router.post("/register", register); // Register a new user
-router.post("/login", login); // User login
-router.get("/logout", logout); // User logout, requires authentication
-router.get("/my-profile",isAuthenticated, getMyProfile); // Fetch the current user's profile
-router.get("/admins", getAdmins); // Get all admin users
-router.get("/allusers", getUsers);
-router.put("/userupdate/:userId", updateUser); // Update user (Only accessible by admin)
-router.put("/user/:id", updatebyUser);     //   Profile Update by User
-router.delete("/userdelete/:id", deleteUser); // Delete a user// Update user (Only accessible by admin)
-router.get("/getsingleuserbyid/:userId", getSingleUserById); // Get a user by ID
+// ==========================================
+// PUBLIC AUTHENTICATION ROUTES
+// ==========================================
+router.post("/register", register);
+router.post("/login", login);
+router.get("/logout", logout);
 
+// Password recovery routes
+router.post("/password/forgot", forgotPassword);
+router.post("/forgot-password", forgotPassword);
+router.get("/password/reset/verify/:token", verifyResetToken);
+router.post("/password/reset/:token", resetPassword);
+router.put("/password/reset/:token", resetPassword);
+router.post("/reset-password/:token", resetPassword);
+router.put("/reset-password/:token", resetPassword);
 
+// ==========================================
+// USER PROFILE & ACCOUNT ROUTES
+// ==========================================
+router.get("/my-profile", isAuthenticated, getMyProfile);
+router.put("/user/:userId", isAuthenticated, updatebyUser);
+router.get("/getsingleuserbyid/:userId", getSingleUserById);
+
+// ==========================================
+// ADMIN USER MANAGEMENT ROUTES
+// ==========================================
+router.get("/admins", isAuthenticated, isAdmin("admin"), getAdmins);
+router.get("/allusers", isAuthenticated, isAdmin("admin"), getUsers);
+router.put("/userupdate/:userId", isAuthenticated, isAdmin("admin"), updateUser);
+router.delete("/userdelete/:id", isAuthenticated, isAdmin("admin"), deleteUser);
 
 export default router;

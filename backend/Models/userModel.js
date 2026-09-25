@@ -1,113 +1,152 @@
 import mongoose from "mongoose";
 import validator from "validator";
-import jwt from "jsonwebtoken"; // Ensure jwt is imported
-import crypto from "crypto"; // Import crypto module
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 
-// Load environment variables
 dotenv.config();
 
-// Define the schema for the User model
-const userSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    validate: [validator.isEmail, "Please enter a valid email"],
-  },
-  phone: {
-    type: Number,
-    required: true,
-    unique: true,
-  },
-  photo: {
-    public_id: {
+// ==========================================
+// USER SCHEMA DEFINITION
+// ==========================================
+const userSchema = new mongoose.Schema(
+  {
+    name: {
       type: String,
-      required: true,
+      required: [true, "Please enter your name"],
+      trim: true,
     },
-    url: {
+    email: {
       type: String,
-      required: true,
+      required: [true, "Please enter your email"],
+      unique: true,
+      lowercase: true,
+      validate: [validator.isEmail, "Please enter a valid email address"],
     },
-  },
-  role: {
-    type: String,
-    enum: ["user", "admin"],
-    default: "user", // Default value for role
-  },
-  password: {
-    type: String,
-    required: true,
-    select: false, // Prevent password from being included in query results by default
-    minlength: 8,
-  },
-  cartItems:[
-    {
-        quantity:{
-            type: Number,
-            default: 1
+    phone: {
+      type: Number,
+      required: [true, "Please enter your phone number"],
+      unique: true,
+    },
+    photo: {
+      public_id: {
+        type: String,
+        default: "default_avatar",
+      },
+      url: {
+        type: String,
+        default: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&auto=format&fit=crop",
+      },
+    },
+    gender: {
+      type: String,
+      enum: ["men", "women", "all", "other"],
+      default: "all",
+    },
+    city: {
+      type: String,
+      default: "",
+    },
+    state: {
+      type: String,
+      default: "",
+    },
+    pincode: {
+      type: String,
+      default: "",
+    },
+    address: {
+      type: String,
+      default: "",
+    },
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
+    password: {
+      type: String,
+      required: [true, "Please enter a password"],
+      select: false, // Prevent password from being included in queries by default
+      minlength: [8, "Password must be at least 8 characters long"],
+    },
+    cartItems: [
+      {
+        quantity: {
+          type: Number,
+          default: 1,
+          min: 1,
         },
-        product:{
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Product"
-        }
-    }
-  ],
-  token: {
-    type: String,
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
+      },
+    ],
+    token: {
+      type: String,
+    },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    resetPasswordToken: String,
+    resetPasswordExpire: Date,
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  isVerified:{
-    type:Boolean,
-    default:false
-},
+  {
+    timestamps: true,
+  }
+);
 
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
-});
-
+// ==========================================
+// PRE-SAVE HOOK: PASSWORD HASHING
+// ==========================================
 userSchema.pre("save", async function (next) {
+  // Only hash password if it has been modified or is new
   if (!this.isModified("password")) {
-    next();
+    return next();
   }
 
   this.password = await bcrypt.hash(this.password, 10);
+  next();
 });
 
-// JWT TOKEN
+// ==========================================
+// INSTANCE METHODS
+// ==========================================
+
+/**
+ * Generate JSON Web Token for authentication
+ */
 userSchema.methods.getJWTToken = function () {
-  return jwt.sign({ id: this._id }, process.env.STRIPE_SECRET_KEY, {
-    expiresIn: process.env.JWT_EXPIRE,
+  return jwt.sign({ userId: this._id }, process.env.JWT_SECRET_KEY, {
+    expiresIn: process.env.JWT_EXPIRE || "30d",
   });
 };
 
-// Compare Password
-
-userSchema.methods.comparePassword = async function (password) {
-  return await bcrypt.compare(password, this.password);
+/**
+ * Compare plain text password with hashed password in database
+ */
+userSchema.methods.comparePassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Generating Password Reset Token
+/**
+ * Generate and hash password reset token
+ */
 userSchema.methods.getResetPasswordToken = function () {
-  // Generating Token
   const resetToken = crypto.randomBytes(20).toString("hex");
 
-  // Hashing and adding resetPasswordToken to userSchema
   this.resetPasswordToken = crypto
     .createHash("sha256")
     .update(resetToken)
     .digest("hex");
 
-  this.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+  this.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 minutes validity
 
   return resetToken;
-};// Create the User model based on the schema
+};
+
 export const User = mongoose.model("User", userSchema);

@@ -1,69 +1,61 @@
-import axios from "axios";
 import React, { createContext, useContext, useEffect, useState } from "react";
-import toast from "react-hot-toast";
+import apiClient from "../api/apiClient";
 
 export const AuthContext = createContext();
 
+// ==========================================
+// AUTHENTICATION & GLOBAL DATA PROVIDER
+// ==========================================
 export const AuthProvider = ({ children }) => {
-  const [profile, setProfile] = useState();
-  const [products, setProducts] = useState();
-  const [allorders, setAllOrders] = useState();
+  const [profile, setProfile] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [allorders, setAllOrders] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
 
+  // Initialize session and global store data
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        // Retrieve the token directly from localStorage
-        let token = localStorage.getItem("jwt"); 
-        console.log(token);
+        const token = localStorage.getItem("jwt");
         if (token) {
-          const { data } = await axios.get(
-            "http://localhost:3900/api/users/my-profile",
-            {
-              withCredentials: true,
-              headers: {
-                "Content-Type": "application/json",
-              },
-            }
-          );
-          
-          setProfile(data.user);
-          setIsAuthenticated(true);
+          const { data } = await apiClient.get("/users/my-profile");
+          if (data?.user) {
+            setProfile(data.user);
+            setIsAuthenticated(true);
+          }
         }
       } catch (error) {
-        console.log(error);
+        console.error("Session verification failed:", error.message);
+        // Clear invalid local storage token if session expired
+        localStorage.removeItem("jwt");
+        setIsAuthenticated(false);
+        setProfile(null);
+      } finally {
+        setLoading(false);
       }
     };
 
     const fetchProducts = async () => {
       try {
-        const { data } = await axios.get(
-          "http://localhost:3900/api/products/getallproducts",
-          {
-            withCredentials: true,
-          }
-        );
-        
-        setProducts(data);
+        const { data } = await apiClient.get("/products/getallproducts");
+        setProducts(data?.products || data || []);
       } catch (error) {
-        console.log(error);
+        console.error("Failed to load products in AuthProvider:", error.message);
       }
     };
 
     const fetchAllOrders = async () => {
       try {
-        const { data } = await axios.get(
-          "http://localhost:3900/api/order/admin/orders",
-          {
-            withCredentials: true,
-          },
-        );
-        setAllOrders(data);
-        
+        const token = localStorage.getItem("jwt");
+        if (token) {
+          const { data } = await apiClient.get("/order/admin/orders");
+          setAllOrders(data?.orders || data || []);
+        }
       } catch (error) {
-        console.log(error);
+        // Suppress expected 403 for standard non-admin users
       }
-    }
+    };
 
     fetchProfile();
     fetchProducts();
@@ -76,10 +68,12 @@ export const AuthProvider = ({ children }) => {
         allorders,
         setAllOrders,
         products,
+        setProducts,
         profile,
         setProfile,
         isAuthenticated,
         setIsAuthenticated,
+        loading,
       }}
     >
       {children}
@@ -88,3 +82,4 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
+export default AuthProvider;

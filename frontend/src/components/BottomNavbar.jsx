@@ -1,101 +1,63 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { AppBar, Toolbar, IconButton, Drawer, List, ListItem, ListItemText, useMediaQuery } from "@mui/material";
-import { FaBars } from "react-icons/fa"; // Menu icon from react-icons
+import React from "react";
+import { Link, useLocation } from "react-router-dom";
+import {
+  FaMale,
+  FaFemale,
+  FaChild,
+  FaShoePrints,
+  FaGem,
+  FaHome,
+  FaFire,
+} from "react-icons/fa";
+import { GiLipstick } from "react-icons/gi";
+
+// ==========================================
+// SLEEK MODERN CATEGORY PILL STRIP: VELURA
+// ==========================================
+const categories = [
+  { to: "/", text: "ALL PRODUCTS", icon: FaFire },
+  { to: "/men", text: "MEN", icon: FaMale },
+  { to: "/women", text: "WOMEN", icon: FaFemale },
+  { to: "/kids", text: "KIDS", icon: FaChild },
+  { to: "/footwear", text: "FOOTWEAR", icon: FaShoePrints },
+  { to: "/beauty", text: "BEAUTY", icon: GiLipstick },
+  { to: "/accessories", text: "ACCESSORIES", icon: FaGem },
+  { to: "/homeandkitchen", text: "HOME & LIVING", icon: FaHome },
+];
 
 const BottomNavbar = () => {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 600px)"); // Check if the screen size is mobile
-
-  const handleDrawerToggle = () => {
-    setDrawerOpen(!drawerOpen);
-  };
+  const location = useLocation();
 
   return (
-    <div>
-      {/* Bottom Navbar */}
-      <AppBar position="sticky" sx={{ top: 64, backgroundColor: "#8B0000" }} className="shadow-lg">
-        <Toolbar className="flex justify-between items-center">
-          {isMobile ? (
-            // Menu icon visible only on mobile
-            <IconButton onClick={handleDrawerToggle} color="inherit">
-              <FaBars size={24} />
-            </IconButton>
-          ) : (
-            <List
-              sx={{
-                display: "flex",
-                width: "100%",
-                justifyContent: "space-around",
-                padding: 0,
-              }}
-              className="hidden md:flex space-x-4"
-            >
-              {/* Navigation links visible only on desktop */}
-              {[
-                 { to: "/men", text: "MEN" },
-                 { to: "/women", text: "WOMEN" },
-                 { to: "/kids", text: "KIDS" },
-                 { to: "/footwear", text: "FOOTWEAR" },
-                 { to: "/beauty", text: "BEAUTY" },
-                 { to: "/accessories", text: "ACCESSORIES" },
-                 { to: "/homeandkitchen", text: "HOME" },
-              ].map((item) => (
-                <ListItem
-                  key={item.text}
-                  component={Link}
-                  to={item.to}
-                  button
-                  sx={{
-                    "&:hover": {
-                      backgroundColor: "rgba(255, 255, 255, 0.1)",
-                      borderRadius: "4px",
-                      transition: "all 0.3s ease",
-                    },
-                  }}
-                  className="text-white hover:text-yellow-400 py-2 px-4 rounded-lg text-center"
-                >
-                  <ListItemText primary={item.text} />
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </Toolbar>
-      </AppBar>
+    <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs relative md:sticky md:top-20 z-30 transition-all duration-200">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6">
+        <div className="flex items-center overflow-x-auto no-scrollbar py-2 sm:py-2.5 space-x-1 sm:space-x-2 justify-start md:justify-center">
+          {categories.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.to;
 
-      {/* Drawer for mobile menu */}
-      <Drawer
-        anchor="right" // Drawer opens from the right side
-        open={drawerOpen}
-        onClose={handleDrawerToggle}
-        sx={{
-          "& .MuiDrawer-paper": {
-            width: "250px", // Adjust width of the drawer
-            backgroundColor: "#8B0000",
-            color: "white",
-            padding: 2,
-            borderRadius: "10px 0 0 10px", // Optional: Rounded corners on the left side
-          },
-        }}
-      >
-        {/* Drawer content */}
-        <List className="space-y-4">
-          {[
-            { to: "/men", text: "MEN" },
-            { to: "/women", text: "WOMEN" },
-            { to: "/kids", text: "KIDS" },
-            { to: "/footwear", text: "FOOTWEAR" },
-            { to: "/beauty", text: "BEAUTY" },
-            { to: "/accessories", text: "ACCESSORIES" },
-            { to: "/homeandkitchen", text: "HOME" },
-          ].map((item) => (
-            <ListItem button key={item.text} component={Link} to={item.to} className="text-white hover:bg-gray-800 py-3 px-4 rounded-lg transition-colors duration-300">
-              <ListItemText primary={item.text} />
-            </ListItem>
-          ))}
-        </List>
-      </Drawer>
-    </div>
+            return (
+              <Link
+                key={item.text}
+                to={item.to}
+                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 whitespace-nowrap ${
+                  isActive
+                    ? "bg-slate-900 text-white shadow-sm scale-105"
+                    : "text-slate-600 hover:text-slate-950 hover:bg-slate-100"
+                }`}
+              >
+                <Icon
+                  className={`text-xs transition-colors ${
+                    isActive ? "text-amber-400" : "text-slate-400 group-hover:text-slate-600"
+                  }`}
+                />
+                <span>{item.text}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </nav>
   );
 };
 

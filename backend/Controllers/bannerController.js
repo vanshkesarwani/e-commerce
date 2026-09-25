@@ -1,87 +1,101 @@
-// controllers/bannerController.js
-import { v2 as cloudinary } from 'cloudinary';
-import Banner from '../models/bannerModel.js';
+import { v2 as cloudinary } from "cloudinary";
+import Banner from "../Models/bannerModel.js";
 
-// Create Banner Controller
+// ==========================================
+// 1. CREATE BANNER (ADMIN)
+// ==========================================
+/**
+ * Create a new promotional banner with image upload
+ */
 export const createBanner = async (req, res) => {
   try {
-    const { bannerImage } = req.files; // Assuming you're using express-fileupload middleware to handle file uploads
+    if (!req.files || !req.files.bannerImage) {
+      return res.status(400).json({ message: "Banner image is required" });
+    }
 
-    // Validate image format
-    const allowedFormats = ['image/jpeg', 'image/png', 'image/webp'];
+    const { bannerImage } = req.files;
+
+    const allowedFormats = ["image/jpeg", "image/png", "image/webp"];
     if (!allowedFormats.includes(bannerImage.mimetype)) {
       return res.status(400).json({
-        message: 'Invalid photo format. Only jpg, png, and webp are allowed',
+        message: "Invalid photo format. Only JPG, PNG, and WEBP are allowed",
       });
     }
 
-    // Upload image to Cloudinary
-    const cloudinaryResponse = await cloudinary.uploader.upload(bannerImage.tempFilePath, {
-      folder: 'banners',
-    });
+    const cloudinaryResponse = await cloudinary.uploader.upload(
+      bannerImage.tempFilePath,
+      { folder: "banners" }
+    );
 
     if (!cloudinaryResponse || cloudinaryResponse.error) {
-      console.log(cloudinaryResponse.error);
-      return res.status(500).json({ message: 'Error uploading banner' });
+      console.error("Cloudinary banner upload error:", cloudinaryResponse?.error);
+      return res.status(500).json({ message: "Error uploading banner image" });
     }
 
-    // Prepare banner data
-    const bannerData = {
+    const { title, link } = req.body;
+
+    const banner = await Banner.create({
+      title: title || "",
+      link: link || "",
       bannerImage: {
         public_id: cloudinaryResponse.public_id,
-        url: cloudinaryResponse.secure_url, // Use secure_url for HTTPS
+        url: cloudinaryResponse.secure_url || cloudinaryResponse.url,
       },
-    };
+    });
 
-    // Save banner to the database
-    const banner = await Banner.create(bannerData);
-
-    // Respond with success message
     res.status(201).json({
-      message: 'Banner created successfully',
-      banner, // Correct the response to include the 'banner' object
+      message: "Banner created successfully",
+      banner,
     });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error("Error in createBanner:", error);
+    return res.status(500).json({ error: error.message || "Internal server error" });
   }
 };
 
-// Get all banners Controller
+// ==========================================
+// 2. GET ALL BANNERS
+// ==========================================
+/**
+ * Retrieve all active promotional banners
+ */
 export const getAllBanners = async (req, res) => {
   try {
-    const banners = await Banner.find();
+    const banners = await Banner.find().sort({ createdAt: -1 });
     res.status(200).json({
-      message: 'All banners fetched successfully',
+      message: "All banners fetched successfully",
       banners,
     });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error("Error in getAllBanners:", error);
+    return res.status(500).json({ error: error.message || "Internal server error" });
   }
 };
 
-// Delete Banner Controller
+// ==========================================
+// 3. DELETE BANNER (ADMIN)
+// ==========================================
+/**
+ * Delete a banner and its associated Cloudinary image
+ */
 export const deleteBanner = async (req, res) => {
   try {
     const { id } = req.params;
     const banner = await Banner.findById(id);
 
     if (!banner) {
-      return res.status(404).json({ message: 'Banner not found' });
+      return res.status(404).json({ message: "Banner not found" });
     }
 
-    // Log the banner data to check if the public_id is correct
-    console.log("Banner data:", banner);
+    if (banner.bannerImage?.public_id) {
+      await cloudinary.uploader.destroy(banner.bannerImage.public_id);
+    }
 
-    
+    await Banner.deleteOne({ _id: id });
 
-    // Delete banner from database
-    await Banner.deleteOne({ _id: id });  // Use deleteOne() instead of remove()
-
-    res.status(200).json({ message: 'Banner deleted successfully' });
+    res.status(200).json({ message: "Banner deleted successfully" });
   } catch (error) {
-    console.log("Error deleting banner:", error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error("Error deleting banner:", error);
+    return res.status(500).json({ error: error.message || "Internal server error" });
   }
 };

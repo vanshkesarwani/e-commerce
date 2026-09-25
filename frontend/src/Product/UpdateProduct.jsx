@@ -1,251 +1,352 @@
-import axios from "axios";
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
+import apiClient from "../api/apiClient";
+import DrawerMenu from "../Dashboard/Drawermenu";
+import {
+  FaCloudUploadAlt,
+  FaArrowLeft,
+  FaCheck,
+  FaEdit,
+  FaImage,
+  FaRedo,
+} from "react-icons/fa";
 
+const CATEGORIES = [
+  "Men",
+  "Women",
+  "Kids",
+  "Footwear",
+  "Beauty",
+  "Accessories",
+  "Home",
+];
+
+// ==========================================
+// LUXURY PRODUCT EDITOR & UPDATER
+// Edit Specifications, Stock, Price & Replace Image
+// ==========================================
 const UpdateProduct = () => {
-  const { productId } = useParams(); // Get productId from URL
+  const { productId } = useParams();
   const navigate = useNavigate();
 
-  // State for managing product data
-  const [productData, setProductData] = useState({
-    title: "",
-    category: "",
-    description: "",
-    price: "",
-    stock: "",
-    productImage: "", // This will hold the URL for image after upload
-    file: null, // To store file for upload
-  });
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
+  const [stock, setStock] = useState("");
+  const [currentImageUrl, setCurrentImageUrl] = useState("");
+  const [newImageFile, setNewImageFile] = useState(null);
+  const [newImagePreview, setNewImagePreview] = useState("");
 
-  // Fetch product details when component mounts
+  const [fetching, setFetching] = useState(true);
+  const [updating, setUpdating] = useState(false);
+
+  // Fetch single product details to prefill
   useEffect(() => {
     if (!productId) {
-      console.error("Product ID is undefined.");
       toast.error("Product ID is missing.");
       return;
     }
 
-    const fetchProductDetail = async () => {
+    const fetchDetail = async () => {
       try {
-        const { data } = await axios.get(
-          `http://localhost:3900/api/products/getsingleproduct/${productId}`,
-          {
-            withCredentials: true,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        setFetching(true);
+        const { data } = await apiClient.get(`/products/getsingleproduct/${productId}`);
 
-        console.log("API response:", data); 
-
-        // Check if the product data exists in the response
         if (data && data._id) {
-          setProductData({
-            title: data.title,
-            category: data.category,
-            description: data.description,
-            price: data.price,
-            stock: data.stock,
-            productImage: data.productImage.url || "", // Accessing product image URL
-            file: null, // Reset the file input
-          });
+          setTitle(data.title || "");
+          setCategory(data.category || "");
+          setDescription(data.description || "");
+          setPrice(data.price !== undefined ? data.price : "");
+          setStock(data.stock !== undefined ? data.stock : "");
+          setCurrentImageUrl(data.productImage?.url || "");
         } else {
-          console.error("Product data is missing in the response.");
-          toast.error("Failed to load product details.");
+          toast.error("Product not found.");
         }
       } catch (error) {
-        console.error("Error fetching product details:", error);
-        toast.error("Failed to load product details.");
+        console.error("Error loading product:", error);
+        toast.error(error.message || "Failed to load product details.");
+      } finally {
+        setFetching(false);
       }
     };
 
-    fetchProductDetail();
+    fetchDetail();
   }, [productId]);
 
-  // Handle input change
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setProductData((prevData) => ({ ...prevData, [name]: value }));
-  };
-
-  // Handle category change
-  const handleCategoryChange = (e) => {
-    const { value } = e.target;
-    setProductData((prevData) => ({ ...prevData, category: value }));
-  };
-
-  // Handle file change (image upload)
-  const handleFileChange = (e) => {
+  // Handle Replacement Photo
+  const handlePhotoChange = (e) => {
     const file = e.target.files[0];
-    setProductData((prevData) => ({
-      ...prevData,
-      file,
-      productImage: URL.createObjectURL(file), // Show the uploaded image preview
-    }));
+    if (!file) return;
+
+    const allowedFormats = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedFormats.includes(file.type)) {
+      toast.error("Invalid format. Only JPG, PNG, and WEBP are supported.");
+      return;
+    }
+
+    setNewImageFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setNewImagePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
-  // Handle form submission
-  const handleUpdateProduct = async (e) => {
+  const handleResetImage = () => {
+    setNewImageFile(null);
+    setNewImagePreview("");
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!title.trim() || !category || !description.trim() || price === "" || stock === "") {
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+
     const formData = new FormData();
-    formData.append("title", productData.title);
-    formData.append("category", productData.category);
-    formData.append("description", productData.description);
-    formData.append("price", productData.price);
-    formData.append("stock", productData.stock);
-    formData.append("productImage", productData.file); // Append the image file
+    formData.append("title", title.trim());
+    formData.append("category", category);
+    formData.append("description", description.trim());
+    formData.append("price", Number(price));
+    formData.append("stock", Number(stock));
+
+    if (newImageFile) {
+      formData.append("productImage", newImageFile);
+    }
 
     try {
-      await axios.put(
-        `http://localhost:3900/api/products/updateproduct/${productId}`,
+      setUpdating(true);
+      const { data } = await apiClient.put(
+        `/products/updateproduct/${productId}`,
         formData,
         {
-          withCredentials: true,
           headers: {
-            "Content-Type": "multipart/form-data", // Use multipart/form-data for file uploads
+            "Content-Type": "multipart/form-data",
           },
         }
       );
-      toast.success("Product updated successfully!");
-      navigate("/myproducts");
+
+      toast.success(data.message || "Product updated successfully!");
+      setTimeout(() => navigate("/myproducts"), 800);
     } catch (error) {
-      console.error("Error updating product:", error);
-      toast.error("Failed to update product.");
+      console.error("Update product error:", error);
+      toast.error(
+        error.response?.data?.message || error.message || "Failed to update product"
+      );
+    } finally {
+      setUpdating(false);
     }
   };
 
-  return (
-    <div className="min-h-screen py-10">
-      <div className="max-w-4xl mx-auto p-6 border rounded-lg shadow-lg">
-        <h1 className="text-2xl font-semibold mb-8">Update Product</h1>
-        <form onSubmit={handleUpdateProduct}>
-          {/* Title */}
-          <div className="mb-4">
-            <label
-              htmlFor="title"
-              className="block text-gray-700 font-semibold mb-2"
-            >
-              Title
-            </label>
-            <input
-              type="text"
-              name="title"
-              id="title"
-              value={productData.title}
-              onChange={handleInputChange}
-              className="w-full px-4 py-2 border rounded-lg"
-              required
-            />
+  if (fetching) {
+    return (
+      <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 text-slate-900">
+        <DrawerMenu />
+        <main className="flex-1 flex items-center justify-center p-8">
+          <div className="text-center space-y-3">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-amber-500 mx-auto" />
+            <p className="text-xs font-semibold text-slate-500">Loading product record...</p>
           </div>
-
-          {/* Category */}
-          <div className="space-y-2">
-            <label className="block text-lg">Category</label>
-            <select
-              value={productData.category}
-              onChange={handleCategoryChange}
-              className="w-full px-3 py-2 border border-gray-400 rounded-md outline-none"
-            >
-              <option value="">Select Category</option>
-              <option value="Electronics">Electronics</option>
-              <option value="Shoes">Shoes</option>
-              <option value="Shirts">Shirts</option>
-              <option value="Paints">Paints</option>
-              <option value="Watches">Watches</option>
-            </select>
-          </div>
-
-          {/* Description */}
-          <div className="mb-4">
-            <label
-              htmlFor="description"
-              className="block text-gray-700 font-semibold mb-2"
-            >
-              Description
-            </label>
-            <textarea
-              name="description"
-              id="description"
-              value={productData.description}
-              onChange={handleInputChange}
-              className="w-full px-4 py-2 border rounded-lg"
-              required
-            />
-          </div>
-
-          {/* Price */}
-          <div className="mb-4">
-            <label
-              htmlFor="price"
-              className="block text-gray-700 font-semibold mb-2"
-            >
-              Price
-            </label>
-            <input
-              type="number"
-              name="price"
-              id="price"
-              value={productData.price}
-              onChange={handleInputChange}
-              className="w-full px-4 py-2 border rounded-lg"
-              required
-            />
-          </div>
-
-          {/* Stock */}
-          <div className="mb-4">
-            <label
-              htmlFor="stock"
-              className="block text-gray-700 font-semibold mb-2"
-            >
-              Stock
-            </label>
-            <input
-              type="number"
-              name="stock"
-              id="stock"
-              value={productData.stock}
-              onChange={handleInputChange}
-              className="w-full px-4 py-2 border rounded-lg"
-              required
-            />
-          </div>
-
-          {/* Product Image */}
-          <div className="mb-4">
-            <label
-              htmlFor="productImage"
-              className="block text-gray-700 font-semibold mb-2"
-            >
-              Product Image
-            </label>
-            {productData.productImage && (
-              <img
-                src={productData.productImage}
-                alt="Product"
-                className="w-24 h-24 object-cover mb-2"
-              />
-            )}
-            <input
-              type="file"
-              name="productImage"
-              id="productImage"
-              onChange={handleFileChange}
-              className="w-full px-4 py-2 border rounded-lg"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600"
-          >
-            Update Product
-          </button>
-        </form>
+        </main>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 text-slate-900">
+      <DrawerMenu />
+
+      <main className="flex-1 p-4 sm:p-8 lg:p-10 max-w-5xl mx-auto w-full">
+        {/* Header & Back Link */}
+        <div className="flex items-center justify-between pb-6 border-b border-slate-200 mb-8">
+          <div>
+            <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+              <FaEdit className="text-amber-500" />
+              <span>Product Editor</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Update Product
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Modify details, pricing, inventory stock, or replace the primary image
+            </p>
+          </div>
+
+          <Link
+            to="/myproducts"
+            className="inline-flex items-center text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl transition shadow-xs"
+          >
+            <FaArrowLeft className="mr-2" />
+            Back to Products
+          </Link>
+        </div>
+
+        {/* Update Form Split View */}
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column: Image Management */}
+          <div className="lg:col-span-5 space-y-4">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+              Product Visual
+            </label>
+
+            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
+              <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-3">
+                <img
+                  src={newImagePreview || currentImageUrl || "https://via.placeholder.com/300"}
+                  alt={title}
+                  className="max-h-full max-w-full object-contain rounded-xl"
+                />
+              </div>
+
+              {newImagePreview ? (
+                <div className="w-full flex items-center justify-between bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-xs">
+                  <span className="font-bold text-amber-800 flex items-center gap-1.5">
+                    <FaImage className="text-amber-600" />
+                    New image selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleResetImage}
+                    className="text-red-600 hover:underline font-bold"
+                  >
+                    Reset
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500">
+                  Currently displayed live on the storefront
+                </p>
+              )}
+
+              {/* Replace image button */}
+              <label className="w-full py-2.5 rounded-xl border border-slate-300 hover:border-amber-500 text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-white text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer">
+                <FaCloudUploadAlt className="text-sm text-amber-500" />
+                <span>{newImagePreview ? "Choose Different Image" : "Replace Image"}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg, image/png, image/webp"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Right Column: Specification Form Fields */}
+          <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-5">
+            {/* Title */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Product Title <span className="text-amber-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Product Title"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition"
+              />
+            </div>
+
+            {/* Category & Price */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Category <span className="text-amber-500">*</span>
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition cursor-pointer"
+                >
+                  <option value="">Select Category</option>
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Price (₹) <span className="text-amber-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="Price"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition"
+                />
+              </div>
+            </div>
+
+            {/* Stock Quantity */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Current Stock Inventory <span className="text-amber-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                placeholder="Stock count"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition"
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Product Description <span className="text-amber-500">*</span>
+              </label>
+              <textarea
+                rows={4}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Product description and details..."
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => navigate("/myproducts")}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={updating}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs shadow-md transition transform hover:scale-105 disabled:opacity-50 flex items-center space-x-2 cursor-pointer"
+              >
+                {updating ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <span>Saving Changes...</span>
+                  </>
+                ) : (
+                  <>
+                    <FaCheck className="text-xs" />
+                    <span>Save Changes</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
+      </main>
     </div>
   );
 };
