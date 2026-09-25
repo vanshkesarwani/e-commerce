@@ -4,10 +4,12 @@ import axios from "axios";
 // CENTRALIZED API CLIENT CONFIGURATION
 // ==========================================
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3900/api";
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? "/api" : "http://localhost:3900/api");
 
 export const BASE_SERVER_URL =
-  import.meta.env.VITE_SERVER_URL || "http://localhost:3900";
+  import.meta.env.VITE_SERVER_URL ||
+  (import.meta.env.PROD ? "" : "http://localhost:3900");
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,

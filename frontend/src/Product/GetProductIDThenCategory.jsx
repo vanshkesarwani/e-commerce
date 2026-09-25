@@ -1,4 +1,4 @@
-import axios from "axios";
+import apiClient from "../api/apiClient";
 import React, { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useParams } from "react-router-dom";
@@ -10,11 +10,8 @@ const GetProductIDThenCategory = () => {
   useEffect(() => {
     const fetchIdCategory = async () => {
       try {
-        const { data } = await axios.get(
-          `http://localhost:3900/api/products/product/${id}/category`,
-          {
-            withCredentials: true,
-          }
+        const { data } = await apiClient.get(
+          `/products/product/${id}/category`
         );
         setRelatedProducts(data.relatedProducts || []);
       } catch (error) {

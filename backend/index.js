@@ -38,7 +38,7 @@ cloudinary.config({
 app.use(express.json());
 app.use(cookieParser());
 
-// Dynamic CORS configuration supporting primary frontend and fallback ports
+// Dynamic CORS configuration supporting primary frontend, vercel previews, and fallback ports
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
@@ -46,20 +46,28 @@ const allowedOrigins = [
   "http://localhost:5175",
 ].filter(Boolean);
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, true); // Fallback permissive for local dev
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches allowed list, localhost, or any vercel.app deployment
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.includes("localhost") ||
+      origin.endsWith(".vercel.app")
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Permissive fallback for all clients
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // File upload middleware with temporary storage
 app.use(
@@ -72,43 +80,71 @@ app.use(
 // ==========================================
 // 3. DATABASE CONNECTION
 // ==========================================
+let isConnected = false;
+let isSeeded = false;
+
 const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) {
+    return;
+  }
+
   const uri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/ecommerce";
   try {
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 8000 });
+    isConnected = true;
     console.log("Connected successfully to MongoDB:", uri.includes("127.0.0.1") ? "Local MongoDB (ecommerce)" : "MongoDB Atlas (ecommerce)");
-    await autoSeedDefaults();
+    if (!isSeeded) {
+      isSeeded = true;
+      autoSeedDefaults().catch((err) => console.error("AutoSeed failed:", err.message));
+    }
   } catch (error) {
-    console.error("Primary MongoDB connection error, attempting fallback to local MongoDB:", error.message);
+    console.error("Primary MongoDB connection error, attempting fallback:", error.message);
     try {
-      await mongoose.connect("mongodb://127.0.0.1:27017/ecommerce");
+      await mongoose.connect("mongodb://127.0.0.1:27017/ecommerce", { serverSelectionTimeoutMS: 3000 });
+      isConnected = true;
       console.log("Connected successfully to fallback local MongoDB (ecommerce)");
-      await autoSeedDefaults();
+      if (!isSeeded) {
+        isSeeded = true;
+        autoSeedDefaults().catch((err) => console.error("AutoSeed failed:", err.message));
+      }
     } catch (localErr) {
       console.error("Fallback MongoDB connection error:", localErr.message);
     }
   }
 };
+
+// Immediate connection attempt
 connectDB();
+
+// Middleware ensuring DB connection before processing API routes
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState < 1) {
+    await connectDB();
+  }
+  next();
+});
 
 // ==========================================
 // 4. API ROUTE MOUNTING
 // ==========================================
-app.use("/api/users", userRoute);
-app.use("/api/products", productRoute);
-app.use("/api/banner", bannerRoute);
-app.use("/api/cart", cartRoute);
-app.use("/api/order", orderRoute);
-app.use("/api/coupon", couponRoute);
-app.use("/api/dashboard", dashboardRoute);
+const apiRoutes = [
+  { path: "/users", handler: userRoute },
+  { path: "/products", handler: productRoute },
+  { path: "/banner", handler: bannerRoute },
+  { path: "/cart", handler: cartRoute },
+  { path: "/order", handler: orderRoute },
+  { path: "/coupon", handler: couponRoute },
+  { path: "/dashboard", handler: dashboardRoute },
+];
 
-// Base root and health check routes
-app.get("/", (req, res) => {
-  res.status(200).json({ status: "active", name: "Velura E-Commerce API", version: "1.0.0" });
+apiRoutes.forEach(({ path, handler }) => {
+  app.use(`/api${path}`, handler);
+  app.use(path, handler);
 });
 
-app.get("/api/health", (req, res) => {
-  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
+// Base root and health check routes
+app.get(["/", "/api", "/health", "/api/health"], (req, res) => {
+  res.status(200).json({ status: "active", name: "Velura E-Commerce API", version: "1.0.0" });
 });
 
 // 404 Unhandled API route fallback
@@ -158,8 +194,10 @@ app.use((err, req, res, next) => {
 // ==========================================
 // 5. SERVER INITIALIZATION
 // ==========================================
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
 
 export default app;
